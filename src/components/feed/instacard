@@ -1,0 +1,332 @@
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  MessageCircle,
+  Share2,
+  Bookmark,
+  ArrowBigUp,
+  Trash2,
+  X,
+  Send,
+  Maximize2,
+} from "lucide-react";
+import QuickPinchZoom, { make3dTransformValue } from "react-quick-pinch-zoom";
+import { cn } from "@/lib/utils";
+import { toggleLike } from "@/services/likeService";
+import { addComment, getComments } from "@/services/commentService";
+import { supabase } from "@/lib/supabaseClient";
+import { useNavigate } from "react-router-dom";
+
+interface PostCardProps {
+  post: any;
+  onDelete: (postId: string) => void;
+}
+
+const PostCard = ({ post, onDelete }: PostCardProps) => {
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(post.likes_count || 0);
+  const [saved, setSaved] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isZoomOpen, setIsZoomOpen] = useState(false);
+  
+  const imgRef = useRef<HTMLImageElement>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setCurrentUserId(data.user?.id || null);
+    };
+    getUser();
+    checkSaved();
+  }, []);
+
+  const handleLike = async () => {
+    try {
+      const result = await toggleLike(post.id);
+      setLiked(result === "liked");
+      setLikeCount(prev => (result === "liked" ? prev + 1 : prev - 1));
+    } catch (err) {
+      console.error("Action failed", err);
+    }
+  };
+
+  const loadComments = async () => {
+    const data = await getComments(post.id);
+    setComments(data);
+  };
+
+  useEffect(() => {
+    if (showComments) loadComments();
+  }, [showComments]);
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return;
+    const inserted = await addComment(post.id, newComment, null);
+    setComments(prev => [...prev, inserted]);
+    setNewComment("");
+  };
+
+  const checkSaved = async () => {
+    if (!currentUserId) return;
+    const { data } = await supabase.from("saved_posts").select("id").eq("user_id", currentUserId).eq("post_id", post.id).maybeSingle();
+    if (data) setSaved(true);
+  };
+
+  const onUpdate = ({ x, y, scale }: any) => {
+    if (imgRef.current) {
+      const value = make3dTransformValue({ x, y, scale });
+      imgRef.current.style.setProperty("transform", value);
+    }
+  };
+
+  const actionButtonClasses = "flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-black/30 backdrop-blur-xl border border-white/5 hover:bg-black/50 transition-all duration-300 group";
+
+  return (
+    <div className="relative mb-12 group">
+      <motion.div 
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden rounded-[2.5rem] bg-secondary shadow-2xl transition-all duration-500 hover:shadow-primary/10"
+      >
+        {/* MEDIA LAYER (If Image Exists, It's the Background) */}
+        {post.image_url ? (
+          <div className="relative aspect-[4/5] w-full overflow-hidden">
+            <img
+              src={post.image_url}
+              className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+              alt="Post media"
+            />
+            {/* The Zoom/Expand Overlay */}
+            <motion.div 
+                onClick={() => setIsZoomOpen(true)}
+                className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity duration-300 z-10"
+            >
+                <div className="p-4 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white">
+                    <Maximize2 className="w-8 h-8" />
+                </div>
+            </motion.div>
+            {/* VIGNETTE MASK (To make text readable at bottom) */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent z-0" />
+          </div>
+        ) : (
+          /* Text-Only Post Styling */
+          <div className="pt-10 pb-8 px-8 bg-gradient-to-br from-card to-secondary/30">
+            <p className="text-[19px] text-foreground leading-relaxed font-medium tracking-tight">
+              {post.content}
+            </p>
+          </div>
+        )}
+
+        {/* CONTENT LAYER (Floating on top of mask) */}
+        <div className={cn("relative z-10", post.image_url ? "absolute bottom-0 left-0 w-full p-8" : "px-8 pb-8")}>
+          
+          {/* HEADER (Conditional color if background is image) */}
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-4">
+              <motion.div 
+                whileHover={{ scale: 1.08, rotate: 5 }}
+                onClick={() => navigate(`/profile/${post.user_id}`)}
+                className="relative cursor-pointer"
+              >
+                <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary/40 shadow-xl shadow-primary/10">
+                  {post.profiles?.avatar_url ? (
+                    <img src={post.profiles.avatar_url} className="w-full h-full object-cover" alt="avatar" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center font-bold text-primary bg-primary/10 text-xl">
+                      {post.profiles?.full_name?.charAt(0)}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+              
+              <div>
+                <h4 
+                  onClick={() => navigate(`/profile/${post.user_id}`)}
+                  className={cn("font-extrabold text-[16px] tracking-tight cursor-pointer transition-colors", post.image_url ? "text-white" : "text-foreground hover:text-primary")}
+                >
+                  {post.profiles?.full_name}
+                </h4>
+                <span className={cn("text-[12px] font-semibold uppercase tracking-widest", post.image_url ? "text-white/60" : "text-muted-foreground/70")}>
+                  {new Date(post.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
+                </span>
+              </div>
+            </div>
+
+            {currentUserId === post.user_id && (
+              <motion.button 
+                whileHover={{ scale: 1.15, rotate: -10 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => onDelete(post.id)}
+                className="p-3 rounded-full bg-white/5 hover:bg-red-500/20 text-white hover:text-red-400 transition-all border border-white/10"
+              >
+                <Trash2 className="w-5 h-5" />
+              </motion.button>
+            )}
+          </div>
+
+          {/* If there's an image, the content text is minimal and bold */}
+          {post.image_url && (
+            <p className="text-[17px] text-white/90 leading-snug mb-8 font-semibold tracking-tight">
+              {post.content}
+            </p>
+          )}
+
+          {/* INTERACTION BAR (Floating Glass Buttons) */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {/* LIKE */}
+              <motion.button
+                whileHover={{ scale: 1.05, y: -3 }}
+                whileTap={{ scale: 0.85 }}
+                onClick={handleLike}
+                className={cn(actionButtonClasses, liked ? "text-primary border-primary/30 shadow-xl shadow-primary/10" : "text-white/80")}
+              >
+                <ArrowBigUp className={cn("w-6 h-6 transition-all", liked && "fill-current scale-110 drop-shadow-[0_0_8px_rgba(var(--primary),0.8)]")} />
+                <span className="text-sm font-extrabold tabular-nums tracking-tight">{likeCount.toLocaleString()}</span>
+              </motion.button>
+
+              {/* COMMENT */}
+              <motion.button
+                whileHover={{ scale: 1.05, y: -3 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowComments(true)}
+                className={cn(actionButtonClasses, "text-white/80")}
+              >
+                <MessageCircle className="w-6 h-6 group-hover:text-primary transition-colors" />
+                <span className="text-sm font-extrabold tabular-nums tracking-tight">{post.comments_count || 0}</span>
+              </motion.button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <motion.button whileHover={{ scale: 1.1, rotate: 15 }} className="p-3.5 rounded-full bg-white/5 text-white/70 border border-white/10 hover:bg-white/10">
+                <Share2 className="w-5 h-5" />
+              </motion.button>
+              
+              <motion.button 
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.8 }}
+                onClick={() => setSaved(!saved)}
+                className={cn("p-3.5 rounded-full border transition-all", saved ? "text-primary bg-primary/10 border-primary/20 shadow-xl shadow-primary/10" : "text-white/70 bg-white/5 border-white/10 hover:bg-white/10")}
+              >
+                <Bookmark className={cn("w-5 h-5", saved && "fill-current drop-shadow-[0_0_8px_rgba(var(--primary),0.8)]")} />
+              </motion.button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* ========================================= */}
+      {/* PREMIUM IMAGE ZOOM VIEWER (ReactQuickPinchZoom) */}
+      {/* ========================================= */}
+      <AnimatePresence>
+        {isZoomOpen && post.image_url && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-2xl flex items-center justify-center p-4 md:p-12 overflow-hidden"
+            onClick={() => setIsZoomOpen(false)} // Click background to close
+          >
+            {/* Close Button */}
+            <motion.button 
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+              className="absolute top-6 right-6 z-[201] p-4 rounded-full bg-secondary hover:bg-white/10 text-foreground transition-colors"
+              onClick={() => setIsZoomOpen(false)}
+            >
+              <X className="w-7 h-7" />
+            </motion.button>
+
+            {/* Pinch Zoom Container */}
+            <div className="relative w-full h-full max-w-7xl max-h-[90vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              <QuickPinchZoom onUpdate={onUpdate}>
+                <img
+                  ref={imgRef}
+                  src={post.image_url}
+                  className="w-auto h-auto max-w-full max-h-full rounded-2xl shadow-3xl object-contain"
+                  alt="Zoomed content"
+                />
+              </QuickPinchZoom>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================= */}
+      {/* REFINED, FULL-SCREEN COMMENTS */}
+      {/* ========================================= */}
+      <AnimatePresence>
+        {showComments && (
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 35, stiffness: 350 }}
+            className="fixed inset-0 z-[150] bg-background overflow-hidden flex flex-col"
+          >
+            {/* HEADER */}
+            <div className="flex justify-between items-center px-8 py-8 border-b border-border/50 bg-background/90 backdrop-blur-lg sticky top-0 z-10">
+              <div>
+                <h3 className="text-2xl font-extrabold tracking-tighter">Community Thoughts</h3>
+                <p className="text-sm text-muted-foreground font-medium uppercase tracking-widest mt-1.5">
+                  {comments.length.toLocaleString()} Interactions
+                </p>
+              </div>
+              <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowComments(false)} className="p-3.5 rounded-full bg-secondary hover:bg-secondary/80 transition-colors">
+                <X className="w-6 h-6" />
+              </motion.button>
+            </div>
+
+            {/* COMMENTS LIST */}
+            <div className="flex-1 overflow-y-auto px-8 space-y-10 pb-40 pt-10">
+              {comments.map((comment) => (
+                <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} key={comment.id} className="flex gap-5">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center font-bold text-primary border border-primary/20 text-lg">
+                    {comment.profiles?.full_name?.charAt(0)}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-md font-extrabold mb-1.5">{comment.profiles?.full_name}</p>
+                    <p className="text-[15px] text-foreground/80 leading-relaxed bg-secondary/50 p-5 rounded-2xl rounded-tl-none border border-border/30 shadow-inner">
+                        {comment.content}
+                    </p>
+                    <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-widest mt-2 ml-1 block">
+                        {new Date(comment.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* FLOATING INPUT BAR */}
+            <div className="absolute bottom-10 left-0 w-full px-8">
+              <div className="max-w-5xl mx-auto flex items-center gap-4 bg-card/80 backdrop-blur-2xl border border-white/5 p-3 pl-6 rounded-full shadow-2xl shadow-black/30">
+                <input
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Add your voice to the discussion..."
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-md placeholder:text-muted-foreground/50"
+                />
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={handleAddComment}
+                  disabled={!newComment.trim()}
+                  className="bg-primary text-primary-foreground px-6 py-4 rounded-full disabled:opacity-40 shadow-xl shadow-primary/20 font-bold text-sm"
+                >
+                  <Send className="w-5 h-5" />
+                </motion.button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default PostCard;
