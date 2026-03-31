@@ -2,10 +2,38 @@ import { useState } from "react";
 import { Plus, Image, FileText, Smile, Hash, X, Send } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/lib/supabaseClient";
 
 const CreatePostButton = () => {
   const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
 
+const handlePost = async () => {
+
+  if (!text.trim()) {
+    alert("Post empty nahi ho sakta");
+    return;
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    alert("Login karo pehle");
+    return;
+  }
+
+  const { error } = await supabase.from("posts").insert({
+    content: text,
+    user_id: user.id
+  });
+
+  if (error) {
+    alert(error.message);
+  } else {
+    setText("");
+    setOpen(false);
+  }
+};
   return (
     <>
       <button onClick={() => setOpen(true)} className="fab">
@@ -34,11 +62,12 @@ const CreatePostButton = () => {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
-              <textarea
-                placeholder="What's on your mind?"
-                className="w-full h-32 bg-muted/50 rounded-xl p-4 text-sm text-foreground placeholder:text-muted-foreground resize-none border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-              />
+<textarea
+  value={text}
+  onChange={(e) => setText(e.target.value)}
+  placeholder="What's on your mind?"
+  className="w-full h-32 bg-muted/50 rounded-xl p-4 text-sm text-foreground placeholder:text-muted-foreground resize-none border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+/>
 
               <div className="flex items-center justify-between mt-4">
                 <div className="flex items-center gap-2">
@@ -55,7 +84,9 @@ const CreatePostButton = () => {
                     <Hash className="w-5 h-5" />
                   </button>
                 </div>
-                <Button className="gradient-primary-hover text-primary-foreground rounded-xl px-6 border-0">
+                <Button 
+                 onClick={handlePost}
+                 className="gradient-primary-hover text-primary-foreground rounded-xl px-6 border-0">
                   <Send className="w-4 h-4 mr-2" />
                   Post
                 </Button>
