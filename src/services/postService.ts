@@ -13,10 +13,6 @@ export interface Post {
   comments_count: number;
   shares_count: number;
   created_at: string;
-  profiles: {
-    full_name: string;
-    avatar_url: string | null;
-  };
 }
 
 // =====================================
@@ -52,7 +48,7 @@ export const createPost = async (
 };
 
 // =====================================
-// IMAGE UPLOAD (SUPABASE STORAGE)
+// IMAGE UPLOAD
 // =====================================
 export const uploadPostImage = async (file: File) => {
   if (!file) return null;
@@ -77,20 +73,12 @@ export const uploadPostImage = async (file: File) => {
 };
 
 // =====================================
-// GET ALL POSTS (WITH PROFILE JOIN)
+// GET ALL POSTS (FIXED 🚀)
 // =====================================
 export const getAllPosts = async (): Promise<Post[]> => {
   const { data, error } = await supabase
     .from("posts")
-    .select(
-      `
-      *,
-      profiles (
-        full_name,
-        avatar_url
-      )
-    `
-    )
+    .select("*") // ✅ FIX: no profiles join
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -115,7 +103,7 @@ export const deletePost = async (postId: string) => {
 };
 
 // =====================================
-// LIKE POST + CREATE NOTIFICATION
+// LIKE POST
 // =====================================
 export const toggleLikePost = async (postId: string) => {
   const { data: userData } = await supabase.auth.getUser();
@@ -123,16 +111,6 @@ export const toggleLikePost = async (postId: string) => {
 
   const userId = userData.user.id;
 
-  // Get post owner
-  const { data: post } = await supabase
-    .from("posts")
-    .select("user_id")
-    .eq("id", postId)
-    .single();
-
-  const postOwnerId = post?.user_id;
-
-  // Check if already liked
   const { data: existingLike } = await supabase
     .from("likes")
     .select("*")
@@ -141,7 +119,6 @@ export const toggleLikePost = async (postId: string) => {
     .maybeSingle();
 
   if (existingLike) {
-    // Unlike
     await supabase
       .from("likes")
       .delete()
@@ -149,9 +126,7 @@ export const toggleLikePost = async (postId: string) => {
       .eq("user_id", userId);
 
     await supabase.rpc("decrement_likes_count", { post_id: postId });
-
   } else {
-    // Like
     await supabase.from("likes").insert([
       {
         post_id: postId,
@@ -160,29 +135,5 @@ export const toggleLikePost = async (postId: string) => {
     ]);
 
     await supabase.rpc("increment_likes_count", { post_id: postId });
-
-    // 🔔 CREATE NOTIFICATION
-    if (postOwnerId && postOwnerId !== userId) {
-      await supabase.from("notifications").insert([
-        {
-          user_id: postOwnerId,
-          actor_id: userId,
-          type: "like",
-          message: "Someone liked your post",
-          post_id: postId,
-        },
-      ]);
-    }
   }
-};
-
-// =====================================
-// INCREMENT SHARE COUNT
-// =====================================
-export const incrementShareCount = async (postId: string) => {
-  const { error } = await supabase.rpc("increment_shares_count", {
-    post_id: postId,
-  });
-
-  if (error) throw error;
 };
