@@ -13,11 +13,11 @@ export const getCommunities = async () => {
       name,
       description,
       category,
-      created_by,
+      creator_id,
       status,
       created_at
     `)
-    .eq("status", "approved")
+    .eq("status", "approved") // only approved communities visible
     .order("created_at", { ascending: false })
 
   if (error) {
@@ -27,7 +27,6 @@ export const getCommunities = async () => {
 
   return data || []
 }
-
 
 /* ------------------------------------------------ */
 /* ---------------- Create Community --------------- */
@@ -49,14 +48,15 @@ export const createCommunity = async (
       name,
       description,
       category,
-      created_by: user.id,   // ✅ FIXED
+      creator_id: user.id,   // ✅ FIXED
       status: "pending"
     })
     .select()
     .single()
 
   if (error) {
-    console.error("Error creating community:", error)
+    console.error("❌ CREATE ERROR:", error)
+    alert(error.message)
     throw error
   }
 
@@ -82,7 +82,7 @@ export const joinCommunity = async (communityId: string) => {
     })
 
   if (error) {
-    console.error("Error joining community:", error)
+    console.error("❌ Error joining community:", error)
     throw error
   }
 
@@ -103,7 +103,7 @@ export const getPendingCommunities = async () => {
     .order("created_at", { ascending: false })
 
   if (error) {
-    console.error("Error fetching pending communities:", error)
+    console.error("❌ Error fetching pending communities:", error)
     throw error
   }
 
@@ -123,47 +123,7 @@ export const approveCommunity = async (communityId: string) => {
     .eq("id", communityId)
 
   if (error) {
-    console.error("Error approving community:", error)
-    throw error
-  }
-
-  return true
-}
-
-
-/* ------------------------------------------------ */
-/* --------------- Reject Community ---------------- */
-/* ------------------------------------------------ */
-
-export const rejectCommunity = async (communityId: string) => {
-
-  const { error } = await supabase
-    .from("communities")
-    .update({ status: "rejected" })
-    .eq("id", communityId)
-
-  if (error) {
-    console.error("Error rejecting community:", error)
-    throw error
-  }
-
-  return true
-}
-
-
-/* ------------------------------------------------ */
-/* --------------- Delete Community ---------------- */
-/* ------------------------------------------------ */
-
-export const deleteCommunity = async (communityId: string) => {
-
-  const { error } = await supabase
-    .from("communities")
-    .delete()
-    .eq("id", communityId)
-
-  if (error) {
-    console.error("Error deleting community:", error)
+    console.error("❌ Error approving community:", error)
     throw error
   }
 
@@ -184,7 +144,7 @@ export const getCommunityMessages = async (communityId: string) => {
       message,
       created_at,
       sender_id,
-      profiles:sender_id (
+      profiles!community_messages_sender_id_fkey (
         id,
         full_name,
         avatar_url
@@ -194,7 +154,7 @@ export const getCommunityMessages = async (communityId: string) => {
     .order("created_at", { ascending: true })
 
   if (error) {
-    console.error("Error fetching messages:", error)
+    console.error("❌ Error fetching messages:", error)
     throw error
   }
 
@@ -226,7 +186,7 @@ export const sendCommunityMessage = async (
     .single()
 
   if (error) {
-    console.error("Error sending message:", error)
+    console.error("❌ Error sending message:", error)
     throw error
   }
 
