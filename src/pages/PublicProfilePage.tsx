@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
@@ -18,6 +19,7 @@ const PublicProfile = () => {
   useEffect(() => {
     const getUser = async () => {
       const { data } = await supabase.auth.getUser();
+      console.log("CURRENT USER:", data.user);
       setCurrentUserId(data.user?.id || null);
     };
     getUser();
@@ -36,7 +38,11 @@ const PublicProfile = () => {
         .eq("id", id)
         .single();
 
-      if (!error) setProfile(data);
+      if (error) {
+        console.error("Profile fetch error:", error);
+      } else {
+        setProfile(data);
+      }
     };
 
     fetchProfile();
@@ -49,43 +55,55 @@ const PublicProfile = () => {
     const fetchPosts = async () => {
       if (!id) return;
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("posts")
         .select("*")
         .eq("user_id", id)
         .order("created_at", { ascending: false });
 
-      setPosts(data || []);
+      if (error) {
+        console.error("Posts fetch error:", error);
+      } else {
+        setPosts(data || []);
+      }
     };
 
     fetchPosts();
   }, [id]);
 
   // =============================
-  // FETCH FOLLOW STATUS + COUNT
+  // FETCH FOLLOW DATA
   // =============================
   useEffect(() => {
     const fetchFollowData = async () => {
       if (!id) return;
 
       // Followers count
-      const { data: followers } = await supabase
-        .from("follows")
+      const { data: followers, error: countError } = await supabase
+        .from("followers") // ✅ FIXED
         .select("id")
         .eq("following_id", id);
 
-      setFollowersCount(followers?.length || 0);
+      if (countError) {
+        console.error("Followers count error:", countError);
+      } else {
+        setFollowersCount(followers?.length || 0);
+      }
 
       // Check if current user follows this profile
       if (currentUserId) {
-        const { data } = await supabase
-          .from("follows")
+        const { data, error } = await supabase
+          .from("followers") // ✅ FIXED
           .select("id")
           .eq("follower_id", currentUserId)
           .eq("following_id", id)
           .maybeSingle();
 
-        setIsFollowing(!!data);
+        if (error) {
+          console.error("Follow status error:", error);
+        } else {
+          setIsFollowing(!!data);
+        }
       }
 
       setLoading(false);
@@ -100,26 +118,43 @@ const PublicProfile = () => {
   const handleFollow = async () => {
     if (!currentUserId || !id) return;
 
+    console.log("FOLLOW ACTION:", {
+      follower_id: currentUserId,
+      following_id: id,
+    });
+
     if (isFollowing) {
-      // Optimistic UI
+      // Unfollow
       setIsFollowing(false);
       setFollowersCount((prev) => prev - 1);
 
-      await supabase
-        .from("follows")
+      const { error } = await supabase
+        .from("followers") // ✅ FIXED
         .delete()
         .eq("follower_id", currentUserId)
         .eq("following_id", id);
+
+      if (error) {
+        console.error("Unfollow error:", error);
+      }
+
     } else {
+      // Follow
       setIsFollowing(true);
       setFollowersCount((prev) => prev + 1);
 
-      await supabase.from("follows").insert([
-        {
-          follower_id: currentUserId,
-          following_id: id,
-        },
-      ]);
+      const { error } = await supabase
+        .from("followers") // ✅ FIXED
+        .insert([
+          {
+            follower_id: currentUserId,
+            following_id: id,
+          },
+        ]);
+
+      if (error) {
+        console.error("Follow error:", error);
+      }
     }
   };
 
@@ -129,7 +164,7 @@ const PublicProfile = () => {
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-8">
 
-      {/* ================= PROFILE HEADER ================= */}
+      {/* PROFILE HEADER */}
       <div className="bg-card rounded-3xl p-6 shadow-lg flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center text-2xl font-bold overflow-hidden">
@@ -171,7 +206,7 @@ const PublicProfile = () => {
         )}
       </div>
 
-      {/* ================= POSTS ================= */}
+      {/* POSTS */}
       <div className="space-y-6">
         {posts.length === 0 ? (
           <p className="text-center text-muted-foreground">
@@ -192,3 +227,4 @@ const PublicProfile = () => {
 };
 
 export default PublicProfile;
+

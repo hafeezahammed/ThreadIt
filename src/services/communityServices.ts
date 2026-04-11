@@ -13,11 +13,11 @@ export const getCommunities = async () => {
       name,
       description,
       category,
-      creator_id,
+      created_by,
       status,
       created_at
     `)
-    .eq("status", "approved") // only approved communities visible
+    .eq("status", "approved")
     .order("created_at", { ascending: false })
 
   if (error) {
@@ -49,8 +49,8 @@ export const createCommunity = async (
       name,
       description,
       category,
-      creator_id: user.id,
-      status: "pending" // requires admin approval
+      created_by: user.id,   // ✅ FIXED
+      status: "pending"
     })
     .select()
     .single()

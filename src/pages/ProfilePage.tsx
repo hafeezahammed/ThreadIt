@@ -36,8 +36,8 @@ const ProfilePage = () => {
   const [savedPosts, setSavedPosts] = useState<any[]>([]);
    const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  const [followersList, setFollowersList] = useState<string[]>([]);
-  const [followingList, setFollowingList] = useState<string[]>([]);
+ const [followersList, setFollowersList] = useState<any[]>([]);
+const [followingList, setFollowingList] = useState<any[]>([]);
   const [userAds, setUserAds] = useState<any[]>([]);
   
 
@@ -76,31 +76,73 @@ const ProfilePage = () => {
   // FETCH FOLLOW STATS
   // ===============================
   // ================= FETCH FOLLOW STATS =================
-  const fetchFollowStats = async (userId: string) => {
-    // Followers
-    const { data: followers } = await supabase
+const fetchFollowStats = async (userId: string) => {
+  // Followers
+  const { data: followers } = await supabase
+    .from("follows")
+    .select(`
+      follower_id,
+      profiles!follows_follower_id_fkey (
+        id,
+        full_name,
+        avatar_url
+      )
+    `)
+    .eq("following_id", userId);
+
+  // Following
+  const { data: following } = await supabase
+    .from("follows")
+    .select(`
+      following_id,
+      profiles!follows_following_id_fkey (
+        id,
+        full_name,
+        avatar_url
+      )
+    `)
+    .eq("follower_id", userId);
+
+  const followersProfiles =
+    followers?.map((f: any) => f.profiles) || [];
+
+  const followingProfiles =
+    following?.map((f: any) => f.profiles) || [];
+
+  setFollowersCount(followersProfiles.length);
+  setFollowingCount(followingProfiles.length);
+
+  setFollowersList(followersProfiles);
+  setFollowingList(followingProfiles);
+};
+  const handleFollow = async (targetUserId: string) => {
+  if (!user) return;
+
+  // Check existing follow
+  const { data } = await supabase
+    .from("follows")
+    .select("*")
+    .eq("follower_id", user.id)
+    .eq("following_id", targetUserId)
+    .maybeSingle();
+
+  if (data) {
+    // UNFOLLOW
+    await supabase
       .from("follows")
-      .select("profiles!follows_follower_id_fkey(*)")
-      .eq("following_id", userId);
+      .delete()
+      .eq("follower_id", user.id)
+      .eq("following_id", targetUserId);
+  } else {
+    // FOLLOW
+    await supabase.from("follows").insert({
+      follower_id: user.id,
+      following_id: targetUserId,
+    });
+  }
 
-    // Following
-    const { data: following } = await supabase
-      .from("follows")
-      .select("profiles!follows_following_id_fkey(*)")
-      .eq("follower_id", userId);
-
-    const followersProfiles =
-      followers?.map((f: any) => f.profiles) || [];
-    const followingProfiles =
-      following?.map((f: any) => f.profiles) || [];
-
-    setFollowersCount(followersProfiles.length);
-    setFollowingCount(followingProfiles.length);
-
-    setFollowersList(followersProfiles);
-    setFollowingList(followingProfiles);
-  };
-
+  fetchFollowStats(user.id);
+};
   // ================= UNFOLLOW =================
   const handleUnfollow = async (targetUserId: string) => {
     if (!user) return;
